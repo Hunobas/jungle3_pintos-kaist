@@ -28,6 +28,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list sleep_list;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -306,6 +307,16 @@ thread_yield (void) {
 		list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+}
+
+// Awake the sleeping thread
+void
+thread_awake () {
+	enum intr_level old_level = intr_disable();
+	struct list sleep_list->elem;
+	
+
+
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
