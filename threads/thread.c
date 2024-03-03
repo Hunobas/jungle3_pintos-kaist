@@ -64,6 +64,9 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+void thread_awake(int64_t global_ticks);
+void thread_sleep(int64_t ticks);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -109,6 +112,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -309,14 +313,36 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+void
+thread_sleep (int64_t ticks) {
+	enum intr_level old_level = intr_disable();
+	struct thread *curr_thread = thread_current();
+	curr_thread->awake_tick = ticks;
+
+	list_push_back(&sleep_list, &curr_thread->elem);
+	thread_block();
+	intr_set_level (old_level);
+}
+
 // Awake the sleeping thread
 void
-thread_awake () {
+thread_awake (int64_t global_ticks) {
 	enum intr_level old_level = intr_disable();
-	struct list sleep_list->elem;
+	struct list_elem *curr_elem = list_begin(&sleep_list);
+	struct thread *curr_thread;
+
+	while(curr_elem != list_end(&sleep_list)) {
+		curr_thread = list_entry(curr_elem, struct thread, elem);
+
+		if(global_ticks >= curr_thread->awake_tick) {
+			curr_elem = list_remove(curr_elem);
+			thread_unblock(curr_thread);
+		} else {
+			curr_elem = curr_elem->next;
+		}
+	}
 	
-
-
+	intr_set_level (old_level);
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
