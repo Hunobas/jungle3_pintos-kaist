@@ -67,6 +67,11 @@ static tid_t allocate_tid (void);
 void thread_awake(int64_t global_ticks);
 void thread_sleep(int64_t ticks);
 
+bool cmp_priority(const struct list_elem *a, 
+							const struct list_elem *b, void *aux);
+
+void thread_preemption(void);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -211,6 +216,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	thread_preemption(); // thread create 시 priority 비교
 
 	return tid;
 }
@@ -256,6 +262,8 @@ cmp_priority(const struct list_elem *a,
 							const struct list_elem *b, void *aux) {
 	struct thread *curr_thread = list_entry(a, struct thread, elem);
 	struct thread *cmp_thread = list_entry(b, struct thread, elem);
+
+	return curr_thread->priority > cmp_thread->priority;
 }
 
 /* Returns the name of the running thread. */
@@ -315,8 +323,9 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	// if (curr != idle_thread)
+		// list_push_back (&ready_list, &curr->elem);
+	list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -352,6 +361,24 @@ thread_awake (int64_t global_ticks) {
 	
 	intr_set_level (old_level);
 }
+
+void
+thread_preemption (void) {
+	struct thread *curr_thread = thread_current();
+
+	if (curr_thread == idle_thread)
+		return;
+
+	struct thread *rdy_first = list_entry(list_begin(&ready_list), struct thread, elem);
+
+	int curr_pri = curr_thread->priority;
+	int rdy_pri = rdy_first->priority;
+
+	if (curr_pri < rdy_pri) {
+		thread_yield();
+	}
+}
+
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
