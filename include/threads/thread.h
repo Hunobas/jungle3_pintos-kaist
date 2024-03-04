@@ -134,6 +134,13 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+void thread_awake(int64_t global_ticks);
+void thread_sleep(int64_t ticks);
+
+void thread_preemption(void);
+bool cmp_priority(const struct list_elem *a, 
+							const struct list_elem *b, void *aux);
+
 int thread_get_priority (void);
 void thread_set_priority (int);
 

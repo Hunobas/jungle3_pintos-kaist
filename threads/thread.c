@@ -69,7 +69,6 @@ void thread_sleep(int64_t ticks);
 
 bool cmp_priority(const struct list_elem *a, 
 							const struct list_elem *b, void *aux);
-
 void thread_preemption(void);
 
 /* Returns true if T appears to point to a valid thread. */
