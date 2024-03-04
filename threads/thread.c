@@ -245,9 +245,17 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL); // for priority
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
+}
+
+bool
+cmp_priority(const struct list_elem *a, 
+							const struct list_elem *b, void *aux) {
+	struct thread *curr_thread = list_entry(a, struct thread, elem);
+	struct thread *cmp_thread = list_entry(b, struct thread, elem);
 }
 
 /* Returns the name of the running thread. */
@@ -312,7 +320,7 @@ thread_yield (void) {
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
-
+// 런닝쓰레드가 잠들려고 할 때 + awake_tick 적어주고 재워줌 : 커널에서 해줌
 void
 thread_sleep (int64_t ticks) {
 	enum intr_level old_level = intr_disable();
