@@ -64,6 +64,7 @@ static void print_stats (void);
 
 int main (void) NO_RETURN;
 
+// 커스텀: 초기화 코드
 /* Pintos main program. */
 int
 main (void) {
