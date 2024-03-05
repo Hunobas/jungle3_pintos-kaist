@@ -241,6 +241,7 @@ thread_create (const char *name, int priority,
 	우선 순위 비교해준다음에 넣어주는 코드 만들어주기
 	*/ 
 	thread_unblock (t);
+	thread_compare_priority();
 
 	return tid;
 }
@@ -277,7 +278,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED); 
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list,&t->elem,cmp_priority,NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -345,7 +347,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		//list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list,&curr->elem,cmp_priority,NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -354,6 +357,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+	thread_compare_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -687,4 +692,22 @@ void thread_awake(int64_t ticks){
 		
 	}
 	
+}
+bool cmp_priority (const struct list_elem *a,const struct list_elem *b,void *aux){
+	int a_priority = list_entry(a,struct thread,elem) -> priority;
+	int b_priority = list_entry(b,struct thread,elem) -> priority;
+	return a_priority > b_priority;
+} 
+void thread_compare_priority(void){
+	struct thread *curr = thread_current();
+
+	if(!(list_empty(&ready_list))){
+
+		struct list_elem *e = list_front(&ready_list);
+		struct thread *new = list_entry(e,struct thread,elem);
+		
+		if (curr->priority < new-> priority)
+			thread_yield();
+	}
+
 }
