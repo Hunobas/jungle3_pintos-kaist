@@ -309,9 +309,9 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 	
 	if (!list_empty (&cond->waiters))
-		// list_sort(struct list *list, list_less_func *less, void *aux);
+		{list_sort(&cond->waiters, sema_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
-					struct semaphore_elem, elem)->semaphore);
+					struct semaphore_elem, elem)->semaphore);}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -337,7 +337,7 @@ sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
     struct list *curr_waiter = &(curr_sema->semaphore.waiters);
     struct list *cmp_waiter = &(cmp_sema->semaphore.waiters);
 
-    struct thread *curr_thread = list_entry(list_front(curr_waiter), struct thread, elem);
+    struct thread *curr_thread = list_entry(list_begin(curr_waiter), struct thread, elem);
     struct thread *cmp_thread = list_entry(list_begin(cmp_waiter), struct thread, elem);
 
     return curr_thread->priority > cmp_thread->priority;
