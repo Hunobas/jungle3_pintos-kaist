@@ -31,6 +31,7 @@
 */
 static struct list ready_list;
 static struct list sleep_list;
+static struct list donations;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -125,6 +126,7 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&destruction_req);
 	list_init (&sleep_list);
+	list_init (&donations);
 
 	/* Set up a thread structure for the running thread.: 현재 실행중인 스레드 정보 설정 */
 	initial_thread = running_thread ();
@@ -358,6 +360,7 @@ void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
 
+	re_priority();
 	thread_compare_priority();
 }
 
@@ -465,6 +468,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->init_priority = priority;
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -710,4 +715,27 @@ void thread_compare_priority(void){
 			thread_yield();
 	}
 
+}
+void remove_donation(struct lock *lock){
+	struct list_elem *e;
+	struct thread *curr = thread_current();
+	for(e = list_begin(&curr->donations);e != list_end(&curr->donations); e = list_next(e)){
+		struct thread *t = list_entry(e,struct thread,d_elem);
+		if(t->wait_on_lock = lock){
+			list_remove(&t->d_elem);
+		}
+	}
+}
+
+void re_priority(void){
+	struct thread *curr = thread_current();
+	curr->priority =  curr->init_priority;
+	
+	if(!(list_empty(&curr->donations))){
+		list_sort(&curr->donations,cmp_donation_priority,NULL);
+		struct thread *front = list_entry(list_front(&curr->donations),struct thread,d_elem);
+		
+		if(curr->priority < front->priority)
+			curr->priority = front->priority;
+	}
 }

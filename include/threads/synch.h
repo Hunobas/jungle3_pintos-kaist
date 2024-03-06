@@ -3,7 +3,11 @@
 
 #include <list.h>
 #include <stdbool.h>
+
+void priority_donation(void);
+bool cmp_donation_priority (const struct list_elem *,const struct list_elem *,void *);
 bool sema_cmp_priority (const struct list_elem *,const struct list_elem *,void *);
+
 /* A counting semaphore. */
 struct semaphore {
 	unsigned value;             /* Current value. */

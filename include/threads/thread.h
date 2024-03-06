@@ -97,10 +97,14 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	int64_t awake;                 //본인 잠들 시간 저장용?
+	int init_priority;                  /* 원래 Priority 저장용*/
+	int64_t awake;                      /* 본인 잠들 시간 저장용 */
 
+	struct lock *wait_on_lock;           /* 기다리는 lock */
+	struct list donations;              /* Priority 기부 해줄 리스트*/
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem d_elem;            /* donations list_element */
 
 #ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
 	/* Owned by userprog/process.c. */
@@ -120,8 +124,10 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+void remove_donation(struct lock *);
 bool cmp_priority (const struct list_elem *,const struct list_elem *,void *);
 void thread_compare_priority(void);
+void re_priority(void);
 
 void thread_sleep(int64_t);
 void thread_awake(int64_t);
