@@ -3,7 +3,7 @@
 
 #include <list.h>
 #include <stdbool.h>
-
+bool sema_cmp_priority (const struct list_elem *,const struct list_elem *,void *);
 /* A counting semaphore. */
 struct semaphore {
 	unsigned value;             /* Current value. */
