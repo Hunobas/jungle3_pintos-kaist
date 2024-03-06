@@ -29,6 +29,8 @@
 static struct list ready_list;
 static struct list sleep_list;
 
+#define first_ready_thread list_entry (list_front (&ready_list), struct thread, elem)
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -209,8 +211,17 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	/* Add to run queue. */
+	/* Add to ready_list. */
 	thread_unblock (t);
+
+	struct lock* next_lock = (struct lock *)aux;
+
+	/*
+	 * compare the priorities of the currently running thread and the newly inserted one.
+	 * Yield the CPU if the newly arriving thread has higher priority.
+	*/
+	if (thread_get_priority () < priority)
+		thread_yield ();
 
 	return tid;
 }
@@ -245,9 +256,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
-	// list_insert_ordered(&ready_list, &t->elem, thread_prior_more, NULL); // for priority
+	// list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
+	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
 	intr_set_level (old_level);
 }
 
@@ -262,7 +273,8 @@ thread_sleep (int64_t ticks) {
 	struct thread *curr = thread_current ();
 
 	if (curr != idle_thread) {
-		list_push_back (&sleep_list, &curr->elem);
+		list_insert_ordered (&sleep_list, &curr->elem, thread_ticks_less, NULL);
+		// list_push_back (&sleep_list, &curr->elem);
 		curr->tick = ticks;
 		thread_block ();
 	}
@@ -274,22 +286,18 @@ thread_sleep (int64_t ticks) {
 // Awake the sleeping thread
 void
 thread_awake (int64_t global_ticks) {
-	enum intr_level old_level = intr_disable ();
 	struct list_elem *curr_ptr = list_begin (&sleep_list);
-	struct thread *curr;
+	struct thread *curr_thread;
 
 	while(curr_ptr != list_end (&sleep_list)) {
-		curr = list_entry(curr_ptr, struct thread, elem);
+		curr_thread = list_entry(curr_ptr, struct thread, elem);
 
-		if(global_ticks >= curr->tick) {
+		if(global_ticks >= curr_thread->tick) {
 			curr_ptr = list_remove (curr_ptr);
-			thread_unblock (curr);
-		} else {
-			curr_ptr = curr_ptr->next;
-		}
+			thread_unblock (curr_thread);
+		} else
+			break;
 	}
-	
-	intr_set_level (old_level);
 }
 
 /* Returns the name of the running thread. */
@@ -349,20 +357,22 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	if (curr != idle_thread) {
+		// mlist_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
 
-// TODO: 현재 스레드의 우선순위를 새로운 우선순위로 설정,
-// 현재 스레드가 더 이상 가장 높은 우선순위를 가지지 않으면 CPU를 양보
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
-}
 
+	if (!list_empty (&ready_list) && new_priority < first_ready_thread->priority)
+		thread_yield ();
+}
 
 // TODO: 현재 스레드의 우선순위를 반환,
 // 우선순위 기부의 경우 더 높은(기부된) 우선순위를 반환
@@ -578,7 +588,8 @@ thread_launch (struct thread *th) {
 /* Schedules a new process. At entry, interrupts must be off.
  * This function modify current thread's status to status and then
  * finds another thread to run and switches to it.
- * It's not safe to call printf() in the schedule(). */
+ * It's not safe to call printf() in the schedule().
+ * The status parameter can only be two state: THREAD_READY | THREAD_BLOCKED */
 static void
 do_schedule(int status) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -600,6 +611,7 @@ schedule (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
 	ASSERT (is_thread (next));
+	ASSERT (next == idle_thread || next->status == THREAD_READY);
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 
@@ -645,8 +657,26 @@ allocate_tid (void) {
 
 /* Compare two list elements based on thread ticks. */
 static bool
-thread_ticks_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+thread_ticks_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
     struct thread *ta = list_entry(a, struct thread, elem);
     struct thread *tb = list_entry(b, struct thread, elem);
     return ta->tick < tb->tick;
+}
+
+bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, elem);
+    struct thread *tb = list_entry(b, struct thread, elem);
+    return ta->priority > tb->priority;
+}
+
+bool cmp_semaphore_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+    struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
+    struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
+
+	if (list_empty (&sa->semaphore.waiters) || list_empty (&sa->semaphore.waiters))
+		return false;
+
+    struct thread *ta = list_entry (list_front (&sa->semaphore.waiters), struct thread, elem);
+    struct thread *tb = list_entry (list_front (&sb->semaphore.waiters), struct thread, elem);
+    return ta->priority > tb->priority;
 }
