@@ -194,7 +194,7 @@ lock_acquire (struct lock *lock) {
 	
 	struct thread *curr = thread_current();
 	if(lock->holder){
-		curr -> wait_on_lock = lock->holder;
+		curr -> wait_on_lock = lock;
 		list_insert_ordered(&lock->holder->donations,&curr->d_elem,cmp_donation_priority,NULL);
 		priority_donation();
 	}
@@ -358,8 +358,9 @@ bool cmp_donation_priority (const struct list_elem *a,const struct list_elem *b,
 void priority_donation(void){
 	struct thread *curr = thread_current();
 	for(int depth = 0; depth<8; depth++){
-		if(curr->wait_on_lock == NULL) break;
-		curr->wait_on_lock->holder->priority = curr->priority;
-		curr = curr->wait_on_lock->holder;
+		if(!curr->wait_on_lock) break;
+		struct thread *hold =  curr->wait_on_lock->holder;
+		hold->priority = curr->priority;
+		curr = hold;
 	}
 }
