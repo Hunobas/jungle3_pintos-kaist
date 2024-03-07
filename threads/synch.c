@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static struct list g_lock_list;
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -119,6 +121,7 @@ sema_up (struct semaphore *sema) {
 	}
 	sema->value++;
 
+	// unblock 으로부터 새로이 ready_list에 실린 친구를 실행할지 판단
 	if (t->priority > thread_get_priority ())
 		thread_yield ();
 
@@ -179,8 +182,12 @@ void
 lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
+	if (g_lock_list.head.next == NULL)
+		list_init (&g_lock_list);
+
 	lock->holder = NULL;
 	sema_init (&lock->semaphore, 1);
+	list_push_back (&g_lock_list, &lock->elem);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -192,13 +199,43 @@ lock_init (struct lock *lock) {
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 void
+acquire_donate_recursive (struct thread *owner_thread, const int *donor_pri, int depth) {
+	if (depth == 0)
+		return;
+
+	int *donee_pri = &owner_thread->priority;
+
+	// To prevent priority inversion, donate.
+	if (*donee_pri < *donor_pri) {
+		insert_donor_list (owner_thread, *donor_pri, 1);
+		*donee_pri = *donor_pri;
+
+		// deal with chained donation.
+		if (owner_thread->wait_to_lock != NULL) {
+			owner_thread = owner_thread->wait_to_lock->holder;
+			acquire_donate_recursive (owner_thread, donor_pri, --depth);
+		}
+	}
+}
+
+void
 lock_acquire (struct lock *lock) {
+	struct thread *curr_thread = thread_current ();
+
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+	
+	// is the lock already aquired, then donation operate
+	if (lock->holder != NULL) {
+		struct thread *owner_thread = lock->holder;
+		int donor_pri = thread_get_priority ();
+		acquire_donate_recursive (owner_thread, &donor_pri, DONA_CHAIN_MAX);
+		curr_thread->wait_to_lock = lock;
+	}
 
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	lock->holder = curr_thread;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -227,10 +264,49 @@ lock_try_acquire (struct lock *lock) {
    make sense to try to release a lock within an interrupt
    handler. */
 void
+release_donate_recursive (struct thread *wait_thread) {
+	if (thread_current ()->donor_list[0] < wait_thread->priority) {
+
+		if (thread_current ()->donor_list[0] < wait_thread->donor_list[0]) {
+			remove_donor_list (wait_thread->donor_list[0]);
+		}
+		
+		for (struct list_elem* curr_ptr = list_begin (&g_lock_list);
+			curr_ptr != list_end (&g_lock_list);
+			curr_ptr = list_next (curr_ptr)) {
+
+			ASSERT (curr_ptr->prev != NULL);
+			ASSERT (curr_ptr->next != NULL);
+
+			struct lock* curr_lock = list_entry (curr_ptr, struct lock, elem);
+			if (curr_lock->holder == wait_thread && !list_empty (&curr_lock->semaphore.waiters)) {
+				wait_thread = list_entry (list_front (&curr_lock->semaphore.waiters), struct thread, elem);
+				release_donate_recursive (wait_thread);
+			}
+		}
+	}
+}
+
+void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	struct list *wait_list = &lock->semaphore.waiters;
+	struct list_elem *wait_ptr = list_begin (wait_list);
+	struct thread *wait_thread;
+
+	while(wait_ptr != list_end (wait_list)) {
+		wait_thread = list_entry (wait_ptr, struct thread, elem);
+
+		// remove donor's priority from donor_list of thread_current
+		release_donate_recursive(wait_thread);
+		wait_thread->wait_to_lock = NULL;
+
+		wait_ptr = list_next (wait_ptr);
+	}
+
+	thread_current ()->priority = get_donor_largest ();
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -243,6 +319,12 @@ lock_held_by_current_thread (const struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	return lock->holder == thread_current ();
+}
+
+bool is_deadlock (const struct lock* lock) {
+	ASSERT (lock != NULL);
+
+
 }
 
 /* Initializes condition variable COND.  A condition variable

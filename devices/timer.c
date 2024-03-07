@@ -93,10 +93,8 @@ void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
-	// TODO: 여기서 context switch가 일어나지 않도록 락 걸어줘야 됨.
-	// why? 아래 if 안의 start 변수가 context switch되어 돌아오는 동안 유효하지 않게 되버릴 수 있음.
-
 	ASSERT (intr_get_level () == INTR_ON);
+
 	if (timer_elapsed (start) < ticks)
 		thread_sleep (start + ticks);
 }

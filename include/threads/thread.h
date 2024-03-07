@@ -28,6 +28,8 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define DONA_MAX 1<<7
+#define DONA_CHAIN_MAX 8
 
 /* A kernel thread or user process.
  *
@@ -92,7 +94,9 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	int64_t tick;						/* tick till wake up */
+	int64_t tick;						/* tick till wake up. */
+	struct lock* wait_to_lock;			/* only one lock to make wait this thread. */
+	int donor_list[DONA_MAX];	/* priority list of donors for this thread. (>=1) */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -152,5 +156,9 @@ void do_iret (struct intr_frame *tf);
 
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 bool cmp_semaphore_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+void insert_donor_list (struct thread* donee, int pri, int index);
+void remove_donor_list (int pri);
+int get_donor_largest ();
 
 #endif /* threads/thread.h */
