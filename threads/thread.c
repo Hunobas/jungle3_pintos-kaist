@@ -31,7 +31,7 @@
 */
 static struct list ready_list;
 static struct list sleep_list;
-static struct list donations;
+// static struct list donations;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -126,7 +126,7 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&destruction_req);
 	list_init (&sleep_list);
-	list_init (&donations);
+	// list_init (&donations);
 
 	/* Set up a thread structure for the running thread.: 현재 실행중인 스레드 정보 설정 */
 	initial_thread = running_thread ();
@@ -358,7 +358,7 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->init_priority = new_priority;
 
 	re_priority();
 	thread_compare_priority();
@@ -707,15 +707,27 @@ bool cmp_priority (const struct list_elem *a,const struct list_elem *b,void *aux
 void thread_compare_priority(void){
 	struct thread *curr = thread_current();
 
-	if(!(list_empty(&ready_list))){
+	if (!list_empty (&ready_list) && 
+    thread_current ()->priority < 
+    list_entry (list_front (&ready_list), struct thread, elem)->priority)
+        thread_yield ();
 
-		struct list_elem *e = list_front(&ready_list);
-		struct thread *new = list_entry(e,struct thread,elem);
-		
-		if (curr->priority < new-> priority)
-			thread_yield();
+}
+bool cmp_donation_priority (const struct list_elem *a,const struct list_elem *b,void *aux){
+	int a_priority = list_entry(a,struct thread,d_elem) -> priority;
+	int b_priority = list_entry(b,struct thread,d_elem) -> priority;
+	return a_priority > b_priority;
+} 
+
+void priority_donation(void){
+	int depth;
+	struct thread *curr = thread_current();
+	for(depth = 0; depth<8; depth++){
+		if(!curr->wait_on_lock) break;
+		struct thread *holder =  curr->wait_on_lock->holder;
+		holder->priority = curr->priority;
+		curr = holder;
 	}
-
 }
 void remove_donation(struct lock *lock){
 	struct list_elem *e;

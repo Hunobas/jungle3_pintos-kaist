@@ -350,17 +350,4 @@ bool sema_cmp_priority (const struct list_elem *a,const struct list_elem *b,void
 
 	return a_thread > b_thread;
 } 
-bool cmp_donation_priority (const struct list_elem *a,const struct list_elem *b,void *aux){
-	int a_priority = list_entry(a,struct thread,d_elem) -> priority;
-	int b_priority = list_entry(b,struct thread,d_elem) -> priority;
-	return a_priority > b_priority;
-} 
-void priority_donation(void){
-	struct thread *curr = thread_current();
-	for(int depth = 0; depth<8; depth++){
-		if(!curr->wait_on_lock) break;
-		struct thread *hold =  curr->wait_on_lock->holder;
-		hold->priority = curr->priority;
-		curr = hold;
-	}
-}
+

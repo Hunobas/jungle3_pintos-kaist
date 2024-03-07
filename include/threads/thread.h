@@ -126,7 +126,9 @@ struct thread {
 extern bool thread_mlfqs;
 void remove_donation(struct lock *);
 bool cmp_priority (const struct list_elem *,const struct list_elem *,void *);
+bool cmp_donation_priority (const struct list_elem *,const struct list_elem *,void *);
 void thread_compare_priority(void);
+void priority_donation(void);
 void re_priority(void);
 
 void thread_sleep(int64_t);
