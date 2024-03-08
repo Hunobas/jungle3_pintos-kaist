@@ -128,6 +128,8 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+int load_avg;
+
 void remove_donation(struct lock *);
 bool cmp_priority (const struct list_elem *,const struct list_elem *,void *);
 bool cmp_donation_priority (const struct list_elem *,const struct list_elem *,void *);
