@@ -96,6 +96,13 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	// for the donations
+	struct list donations;
+	struct list_elem d_elem;
+	struct lock *wait_on_lock;
+
+	int origin_prior;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -143,6 +150,15 @@ bool cmp_priority(const struct list_elem *a,
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+
+
+// for donation
+bool donation_priority(const struct list_elem *a, 
+							const struct list_elem *b, void *aux);
+void donation_insert(struct thread *curr_thread, int depth);
+void donation_update(void);
+void donation_remove(struct lock *lock);
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);

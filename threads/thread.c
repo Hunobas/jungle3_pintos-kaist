@@ -200,6 +200,7 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+	t->origin_prior = t->priority; // for the donate
 	tid = t->tid = allocate_tid ();
 
 	/* Call the kernel_thread if it scheduled.
@@ -378,11 +379,70 @@ thread_preemption (void) {
 	}
 }
 
+// for the donation
+
+bool
+donation_priority(const struct list_elem *a, 
+							const struct list_elem *b, void *aux) {
+	struct thread *curr_thread = list_entry(a, struct thread, d_elem);
+	struct thread *cmp_thread = list_entry(b, struct thread, d_elem);
+
+	return curr_thread->priority > cmp_thread->priority;
+}
+
+void
+donation_insert(struct thread *curr_thread, int depth) {
+	if (depth == 0 || curr_thread->wait_on_lock == NULL) 
+		return ;
+	
+	struct thread *lock_holder = curr_thread->wait_on_lock->holder;
+
+	if (lock_holder->priority = curr_thread->priority) {
+		lock_holder->priority = curr_thread->priority;
+	}
+
+	donation_insert(lock_holder, depth-1);
+}
+
+void
+donation_update(void) {
+	struct thread *curr_thread = thread_current();
+	struct list *curr_donation = &curr_thread->donations;
+
+	if (list_empty(curr_donation) || 
+				curr_thread->origin_prior > list_entry(list_begin(curr_donation), struct thread, d_elem)->priority)
+			curr_thread->priority = curr_thread->origin_prior;
+	else
+			curr_thread->priority = list_entry(list_begin(curr_donation), struct thread, d_elem)->priority;
+}
+
+void
+donation_remove(struct lock *lock) {
+	struct thread *curr_thread = thread_current();
+	struct list *curr_donation = &curr_thread->donations;
+	struct list_elem *first_delem = list_front(curr_donation);
+	
+	while (first_delem != list_end(curr_donation)) {
+		struct thread *first_donor = list_entry(first_delem, struct thread, d_elem);
+		if ( first_donor->wait_on_lock == lock ) {
+			first_delem = list_remove(first_delem);
+		} else {
+			first_delem = list_next(first_delem);
+		}
+	}
+	// delem만 넘기는데, donations 는 remove, next를 안했는데 왜 되는지
+	// wait_on_lock 의 활용유무가 너무 적음, 이렇게 쓰는게 맞는건가
+}
+
+//
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	// thread_current ()->priority = new_priority;
+	thread_current ()->origin_prior = new_priority;
+	donation_update();
+	thread_preemption();  
 }
 
 /* Returns the current thread's priority. */
@@ -479,7 +539,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->origin_prior = priority;
 	t->magic = THREAD_MAGIC;
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

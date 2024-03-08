@@ -4,6 +4,9 @@
 #include <list.h>
 #include <stdbool.h>
 
+// for donation
+#define MAX_DEPTH 8
+
 /* A counting semaphore. */
 struct semaphore {
 	unsigned value;             /* Current value. */
