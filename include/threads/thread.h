@@ -106,6 +106,10 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	struct list_elem d_elem;            /* donations list_element */
 
+	// for advanced scheduler.
+	int nice;							/* niceness of thread for adjusting pri. */
+	int recent_cpu;					/* utilization of cpu by calculating bunch of fomula. */
+
 #ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -124,6 +128,8 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+int load_avg;
+
 void remove_donation(struct lock *);
 bool cmp_priority (const struct list_elem *,const struct list_elem *,void *);
 bool cmp_donation_priority (const struct list_elem *,const struct list_elem *,void *);
@@ -162,5 +168,11 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+// for Advanced Scheduler.
+void calculate_priority (void);
+void calculate_recent_cpu (void);
+void calculate_load_avg (void);
+void recalculate_recent_cpu (void);
 
 #endif /* threads/thread.h */

@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/float.h"
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -29,6 +30,7 @@
 
    THREAD_READY 상태의 프로세스 목록 
 */
+static struct list all_list;
 static struct list ready_list;
 static struct list sleep_list;
 // static struct list donations;
@@ -51,6 +53,7 @@ static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
+#define TIMER_FREQ 100
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. : 마지막 양보후 타이머틱 수*/
 
@@ -67,6 +70,9 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+
+#define load_fir_co divide_xbyn (convert_ntox (59), 60)
+#define load_sec_co divide_xbyn (convert_ntox (1), 60)
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -86,6 +92,48 @@ static tid_t allocate_tid (void);
 // Because the gdt will be setup after the thread_init, we should
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
+
+// ----------------------------------------------------------
+#define f (1 << 14)
+
+const int convert_ntox (const int n) {
+   return n*f;
+}
+const int convert_xton (const int x) {
+    // rounding to nearest
+    if (x>=0) return (x+f/2)/f;
+    else return (x-f/2)/f;
+}
+
+const int add_xandn (const int x, const int n) {
+    return x+n*f;
+}
+const int add_xandy (const int x, const int y) {
+    return x+y;
+}
+
+const int sub_nfromx (const int x, const int n) {
+    return x-n*f;
+}
+const int sub_yfromx (const int x, const int y) {
+    return x-y;
+}
+
+const int mult_xbyn (const int x, const int n) {
+    return x * n;
+}
+const int mult_xbyy (const int x, const int y) {
+    return ((int64_t)x)*y/f;
+}
+
+const int divide_xbyn (const int x, const int n) {
+    return x/n;
+}
+const int divide_xbyy (const int x, const int y) {
+    return ((int64_t)x)*f/y;
+}
+
+// ----------------------------------------------------------
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -123,10 +171,13 @@ thread_init (void) {
 
 	/* Init the globla thread context : 자료구조 초기화 */
 	lock_init (&tid_lock);
+	list_init (&all_list);
 	list_init (&ready_list);
 	list_init (&destruction_req);
 	list_init (&sleep_list);
 	// list_init (&donations);
+
+	load_avg = 0;
 
 	/* Set up a thread structure for the running thread.: 현재 실행중인 스레드 정보 설정 */
 	initial_thread = running_thread ();
@@ -372,29 +423,26 @@ thread_get_priority (void) {
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) {
-	/* TODO: Your implementation goes here */
+thread_set_nice (int nice) {
+	thread_current ()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return convert_xton (mult_xbyn (load_avg, TIMER_FREQ));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return convert_xton (thread_current ()->recent_cpu) * TIMER_FREQ;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -420,6 +468,7 @@ idle (void *idle_started_ UNUSED) {
 	struct semaphore *idle_started = idle_started_;
 
 	idle_thread = thread_current ();
+	// idle_thread->recent_cpu = 0;
 	sema_up (idle_started);
 
 	for (;;) {
@@ -470,7 +519,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->init_priority = priority;
 	t->wait_on_lock = NULL;
+	// t->recent_cpu = thread_current ()->recent_cpu;
 	list_init (&t->donations);
+	list_push_back (&all_list, &t->elem);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -669,6 +720,7 @@ allocate_tid (void) {
 
 	return tid;
 }
+
 void thread_sleep(int64_t ticks){
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
@@ -684,26 +736,27 @@ void thread_sleep(int64_t ticks){
 	}
 	intr_set_level (old_level);
 }
+
 void thread_awake(int64_t ticks){
 
 	struct list_elem *curr = list_begin(&sleep_list);
-	while(curr != list_tail(&sleep_list)){
+	while(curr != list_tail(&sleep_list)) {
 		struct thread *t = list_entry(curr,struct thread,elem);
-		if (t->awake <= ticks){
+		if (t->awake <= ticks) {
 			curr=list_remove(curr);
 			thread_unblock(t);
-		}else{
+		} else {
 			curr = list_next(curr);
 		}
-		
 	}
-	
 }
+
 bool cmp_priority (const struct list_elem *a,const struct list_elem *b,void *aux){
 	int a_priority = list_entry(a,struct thread,elem) -> priority;
 	int b_priority = list_entry(b,struct thread,elem) -> priority;
 	return a_priority > b_priority;
 } 
+
 void thread_compare_priority(void){
 	struct thread *curr = thread_current();
 
@@ -713,6 +766,7 @@ void thread_compare_priority(void){
         thread_yield ();
 
 }
+
 bool cmp_donation_priority (const struct list_elem *a,const struct list_elem *b,void *aux){
 	int a_priority = list_entry(a,struct thread,d_elem) -> priority;
 	int b_priority = list_entry(b,struct thread,d_elem) -> priority;
@@ -729,6 +783,7 @@ void priority_donation(void){
 		curr = holder;
 	}
 }
+
 void remove_donation(struct lock *lock){
 	struct list_elem *e;
 	struct thread *curr = thread_current();
@@ -751,4 +806,43 @@ void re_priority(void){
 		if(curr->priority < front->priority)
 			curr->priority = front->priority;
 	}
+}
+
+void calculate_priority (void) {
+
+}
+
+void calculate_recent_cpu (void) {
+	if (thread_current () != idle_thread) {
+		int* recent_cpu = &thread_current ()->recent_cpu;
+		*recent_cpu = add_xandn (*recent_cpu, 1);
+	}
+}
+
+void calculate_load_avg (void) {
+	int ready_threads = 0;
+
+	if (thread_current () == idle_thread)
+		ready_threads = list_size (&ready_list);
+	else {
+		// + 1 is count for the running thread
+		ready_threads = list_size (&ready_list) + 1;
+	}
+
+	load_avg = mult_xbyy (load_fir_co, load_avg) + mult_xbyn (load_sec_co,  ready_threads);
+}
+
+void recalculate_recent_cpu (void) {
+	// ASSERT (!list_empty (&all_list));
+
+	// struct list_elem* curr;
+	// struct thread* t;
+
+	// curr = list_begin(&all_list);
+	
+	// while (curr != list_tail(&all_list)) {
+	// 	t = list_entry(curr, struct thread, elem);
+	// 	t->recent_cpu = mult_xbyy (divide_xbyy (mult_xbyn (load_avg, 2), mult_xbyn (load_avg, 2) + 1), t->recent_cpu) + t->nice;
+	// 	curr = list_next(curr);
+	// }
 }
