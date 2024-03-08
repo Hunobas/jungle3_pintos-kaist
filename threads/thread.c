@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/float.h"
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -374,6 +375,7 @@ thread_get_priority (void) {
 void
 thread_set_nice (int nice UNUSED) {
 	/* TODO: Your implementation goes here */
+	
 }
 
 /* Returns the current thread's nice value. */
@@ -387,14 +389,24 @@ thread_get_nice (void) {
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	int ready_threads;
+	if(thread_current()==idle_thread)
+		ready_threads = list_size(&ready_list);
+	ready_threads = list_size(&ready_list)+ 1;
+	load_avg = add_xandy(mult_xbyy(divide_xbyy((convert_xton(59),convert_xton(60))),load_avg)
+				,mult_xbyy(divide_xbyy((convert_xton(59),convert_xton(60))),ready_threads))
+	return load_avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	int load_avg = thread_get_load_avg()
+	int nice = thread_get_nice()
+	int recent_cpu;
+	recent_cpu =sub_nfromx(mult_xbyy(divide_xbyy(mult_xbyn(load_avg,2),sub_nfromx(mult_xbyn(load_avg,2),1)),recent_cpu),nice)
+	return recent_cpu;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
