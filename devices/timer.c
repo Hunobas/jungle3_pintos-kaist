@@ -128,12 +128,20 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	if(thread_mlfqs){
+		calculate_recent_cpu();
+		if(ticks % 4 == 0){
+			recalculate_priority();
+			if (ticks % TIMER_FREQ == 0) {
+				calculate_load_avg ();
+				recalculate_recent_cpu ();
+			}	
+		}
+	}
 	// 금기
 	// printf("load_avg now: %d\n", load_avg);
-	if (timer_ticks () % TIMER_FREQ == 0) {
-		calculate_load_avg ();
-	}
-	calculate_recent_cpu ();
+	
+	
 	thread_awake(ticks);
 }
 

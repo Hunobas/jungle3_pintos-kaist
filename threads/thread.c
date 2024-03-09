@@ -380,6 +380,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	list_remove(&thread_current()->all_elem);
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -409,6 +410,8 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+	if(thread_mlfqs)
+		return;
 	thread_current ()->init_priority = new_priority;
 
 	re_priority();
@@ -425,6 +428,8 @@ thread_get_priority (void) {
 void
 thread_set_nice (int nice) {
 	thread_current ()->nice = nice;
+	calculate_priority(thread_current());
+	thread_compare_priority();
 }
 
 /* Returns the current thread's nice value. */
@@ -519,9 +524,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->init_priority = priority;
 	t->wait_on_lock = NULL;
+	t->nice = 0;
+	t->recent_cpu = 0;
 	// t->recent_cpu = thread_current ()->recent_cpu;
 	list_init (&t->donations);
-	list_push_back (&all_list, &t->elem);
+	list_push_back (&all_list, &t->all_elem);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -808,14 +815,17 @@ void re_priority(void){
 	}
 }
 
-void calculate_priority (void) {
-
+void calculate_priority (struct thread *t) {
+	if(t == idle_thread)
+		return;
+	t->priority = convert_xton(add_xandn(divide_xbyn(t->recent_cpu,-4),63-t->nice*2));
 }
 
 void calculate_recent_cpu (void) {
 	if (thread_current () != idle_thread) {
-		int* recent_cpu = &thread_current ()->recent_cpu;
-		*recent_cpu = add_xandn (*recent_cpu, 1);
+		int recent_cpu = thread_current ()->recent_cpu;
+		recent_cpu = add_xandn (recent_cpu, 1);
+		thread_current()->recent_cpu = recent_cpu;
 	}
 }
 
@@ -833,16 +843,30 @@ void calculate_load_avg (void) {
 }
 
 void recalculate_recent_cpu (void) {
-	// ASSERT (!list_empty (&all_list));
+	ASSERT (!list_empty (&all_list));
 
-	// struct list_elem* curr;
-	// struct thread* t;
+	struct list_elem* curr;
+	struct thread* t;
 
-	// curr = list_begin(&all_list);
+	curr = list_begin(&all_list);
 	
-	// while (curr != list_tail(&all_list)) {
-	// 	t = list_entry(curr, struct thread, elem);
-	// 	t->recent_cpu = mult_xbyy (divide_xbyy (mult_xbyn (load_avg, 2), mult_xbyn (load_avg, 2) + 1), t->recent_cpu) + t->nice;
-	// 	curr = list_next(curr);
-	// }
+	while (curr != list_tail(&all_list)) {
+		t = list_entry(curr, struct thread, all_elem);
+		t->recent_cpu = mult_xbyy (divide_xbyy (mult_xbyn (load_avg, 2), mult_xbyn (load_avg, 2) + convert_ntox(1)), t->recent_cpu) + convert_ntox(t->nice);
+		curr = list_next(curr);
+	}
+}
+void recalculate_priority (void) {
+	ASSERT (!list_empty (&all_list));
+
+	struct list_elem* curr;
+	struct thread* t;
+
+	curr = list_begin(&all_list);
+	
+	while (curr != list_tail(&all_list)) {
+		t = list_entry(curr, struct thread, all_elem);
+		calculate_priority(t);
+		curr = list_next(curr);
+	}
 }

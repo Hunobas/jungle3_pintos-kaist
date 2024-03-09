@@ -103,6 +103,7 @@ struct thread {
 	struct lock *wait_on_lock;           /* 기다리는 lock */
 	struct list donations;              /* Priority 기부 해줄 리스트*/
 	/* Shared between thread.c and synch.c. */
+	struct list_elem all_elem;   
 	struct list_elem elem;              /* List element. */
 	struct list_elem d_elem;            /* donations list_element */
 
@@ -170,9 +171,9 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 // for Advanced Scheduler.
-void calculate_priority (void);
+void calculate_priority (struct thread *);
 void calculate_recent_cpu (void);
 void calculate_load_avg (void);
 void recalculate_recent_cpu (void);
-
+void recalculate_priority (void);
 #endif /* threads/thread.h */
