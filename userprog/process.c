@@ -42,13 +42,17 @@ tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
-
+	char *save_ptr;
+	// printf("기존의 filename => %s",file_name);
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	strtok_r(file_name," ",&save_ptr);
+	// printf("이거 filname => %s",file_name);
+	// printf("이거 fn_copy => %s",fn_copy);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -57,7 +61,9 @@ process_create_initd (const char *file_name) {
 	return tid;
 }
 
-/* A thread function that launches first user process. */
+/* A thread function that launches first user process. 
+   처음 사용자 프로세스를 시작하는 스레드 함수?
+*/
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -176,8 +182,28 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	/* And then load the binary */
+	char *parse[64];
+   	char *token, *save_ptr;
+	int count = 0;
+	// printf("들어가기전 file_name => %s",file_name);
+   	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+   	token = strtok_r (NULL, " ", &save_ptr)){
+		parse[count++] = token;
+		// printf("token=> %s", token);
+	}
+	// for (int i = 0; i < count; i++) {
+    // printf("parse[%d] => %s\n", i, parse[i]);
+	// }
+	// printf("이거는 load의 file_name => %s\n", file_name);
+
+	/* And then load the binary : 메모리로 */
 	success = load (file_name, &_if);
+	argument_stack(parse,count,&_if.rsp);
+
+	_if.R.rdi = count;
+	_if.R.rsi = (char*)_if.rsp + 8;
+
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); 
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -187,6 +213,37 @@ process_exec (void *f_name) {
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
+}
+void argument_stack(char **parse, int count, void**rsp){
+	//argument 
+	for(int i = count-1; i > -1; i--){
+		printf(" 테스트용 : %s\n",parse[i]);
+		for(int j = strlen(parse[i]); j > -1; j--){
+			(*rsp)--;
+			**(char**)rsp = parse[i][j];
+			printf(" 테스트용22 : %c\n",parse[i][j]);
+		}
+		parse[i] = *(char**)rsp;
+	}
+	//padding
+	int padding = (int)*rsp % 8;
+	for(int i = 0; i <padding; i++){
+		(*rsp)--;
+		**(uint8_t**)rsp = 0;
+	}
+
+	// 0
+	(*rsp) -= 8;
+	**(char ***)rsp = 0;
+
+	//argument address
+	for(int i = count-1 ; i>-1 ; i--){
+		(*rsp) -= 8;
+		**(char ***)rsp = parse[i];
+	}
+	//return address
+	(*rsp) -= 8;
+	**(void***)rsp = 0;
 }
 
 
@@ -204,6 +261,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	 while(1){}
 	return -1;
 }
 
@@ -407,11 +465,11 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 
-	/* Set up stack. */
+	/* Set up stack. => user stack? */
 	if (!setup_stack (if_))
 		goto done;
 
-	/* Start address. */
+	/* Start address. : 시작 주소*/
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
