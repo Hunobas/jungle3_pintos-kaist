@@ -397,8 +397,8 @@ donation_insert(struct thread *curr_thread, int depth) {
 	
 	struct thread *lock_holder = curr_thread->wait_on_lock->holder;
 
-	if (lock_holder->priority = curr_thread->priority) {
-		lock_holder->priority = curr_thread->priority;
+	if (lock_holder->priority < curr_thread->priority) {
+	lock_holder->priority = curr_thread->priority;
 	}
 
 	donation_insert(lock_holder, depth-1);
