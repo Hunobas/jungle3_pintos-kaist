@@ -25,6 +25,7 @@
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
+static uintptr_t set_syscall_stack (uintptr_t*, char **, const char*);
 static void __do_fork (void *);
 
 /* General process initializer for initd and other process. */
@@ -184,6 +185,7 @@ process_exec (void *f_name) {
 	if (!success)
 		return -1;
 
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -204,6 +206,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (1);
 	return -1;
 }
 
@@ -309,6 +312,12 @@ struct ELF64_PHDR {
 /* Abbreviations */
 #define ELF ELF64_hdr
 #define Phdr ELF64_PHDR
+// 함수가 최대 가질 수 있는 인수 수
+#define ARG_MAX 128
+// 정렬 byte 수 (4byte에서 테스트되지 않음)
+#define ALIGNMENT 8
+// 8의 배수로 반올림 (ALIGNMENT가 8일때만 작동하는 코드)
+#define ALIGN(size) (((size) + (ALIGNMENT-1)) & (~0x7))
 
 static bool setup_stack (struct intr_frame *if_);
 static bool validate_segment (const struct Phdr *, struct file *);
@@ -328,6 +337,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+
+	char *token, *save_ptr;
+
+	// file_name 버퍼 한번 담기, token - 1은 save_ptr에 저장
+	file_name = strtok_r (file_name, " ", &save_ptr);
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -413,16 +427,76 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
-
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
+	if ((if_->rsp = set_syscall_stack (&if_->rsp, &save_ptr, file_name)) == NULL)
+		goto done;
+	
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
 	return success;
+}
+
+
+/* set stack pointer. the stack ptr grows down. */
+static uintptr_t set_syscall_stack (uintptr_t* esp_, char **save_ptr_, const char* file_name) {
+	uintptr_t esp_init, esp;
+	esp_init = esp = *esp_;
+	char *save_ptr = *save_ptr_;
+	char *argv[ARG_MAX], *token;
+	int argc = 0;
+
+	argv[argc++] = file_name;
+
+	/* parsing file_name and put into the right stacks
+	 * 인자 글자 수 스택
+	*/
+	for (token = strtok_r (NULL, " ", &save_ptr); token != NULL;
+		token = strtok_r (NULL, " ", &save_ptr)) {
+			if (argc >= ARG_MAX) {
+				printf ("too many args!\n");
+				return NULL;
+			}
+			argv[argc++] = token;
+	}
+
+	// printf("처음 esp는? \t\t\t\t\t%x\n", esp);
+	for (int i = argc - 1; i >= 0; i--) {
+		esp -= strlen(argv[i]) + 1; 						// + 1 ==  + '\0': 종료 문자('\0') 고려
+		strlcpy(esp, argv[i], strlen(argv[i]) + 1);
+		argv[i] = esp;  									// 스택에 푸시한 주소를 argv에 저장
+		// printf("%d번째 인자 글자 수 쌓은 후: 현재 esp는? \t%x\n", i, esp);
+	}
+
+	/* 패딩 스택 */
+	int word_diff = esp_init - esp;
+	int word_align = (ALIGN(word_diff) - word_diff);
+	esp -= word_align;
+	memset(esp, 0, word_align);
+	// printf("패딩 쌓은 후: 현재 esp는? \t\t\t%x\n", esp);
+
+	/* 포인터 스택
+	 * 스트링의 배열을 쌓으려면 strlcpy 대신 memcpy 쓸 것! ***
+	*/
+	esp -= sizeof(char*) * (argc + 1);						 // + 1 ==  + null: argv의 끝(NULL) 고려
+	memcpy(esp, argv, sizeof(char*) * (argc + 1));
+	// printf("포인터 스택 쌓은 후: 현재 esp는? \t\t%x\n", esp);
+	// printf("args1 포인터 내용 \t\t%p\n", *(int*)(esp));
+	// printf("args2 포인터 내용 \t\t%p\n", *(int*)(esp + 8));
+	// printf("args3 포인터 내용 \t\t%p\n", *(int*)(esp + 16));
+	// printf("word-align 내용 \t\t%p\n", *(int*)(esp + 24));
+	// printf("args1 포인터 위치 \t\t%x\n", esp);
+	// printf("args2 포인터 위치 \t\t%x\n", esp + 8);
+	// printf("args3 포인터 위치 \t\t%x\n", esp + 16);
+	// printf("word-align 위치 \t\t%x\n", esp + 24);
+	// printf("argv[0][...] 내용 \t\t%s\n", esp + 29);
+
+	/* 리턴 주소 스택 */
+	esp -= sizeof(void*);
+	memset(esp, 0, sizeof(void*));
+	printf("리턴 주소 쌓은 후: 현재 esp는? \t\t\t%x\n", esp);
+	return esp;
 }
 
 
