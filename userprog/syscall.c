@@ -10,6 +10,7 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+pid_t fork(const char *thread_name, struct intr_frame *f);
 
 /* System call.
  *
@@ -55,8 +56,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_WAIT:
 		f->R.rax = wait(f->R.rdi);
 		break;
+	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi,f);
+		break;
 	
 	default:
+		thread_exit();
 		break;
 	}
 }
@@ -79,13 +84,23 @@ void exit (int status) {
 	thread_exit();
 }
 
-pid_t fork (const char *thread_name) {
-
+pid_t fork (const char *thread_name, struct intr_frame *f UNUSED) {
+	return process_fork(thread_name,f);
 }
 
 int exec (const char *file) {
+	check_address(file);
 
+	char *file_copy;
+    file_copy = palloc_get_page (0);
+	
+	if(file_copy = NULL)
+		exit(-1);
 
+	strlcpy (file_copy, file, PGSIZE);
+
+	if(process_exec(file_copy) == -1)
+		exit(-1);
 }
 
 int wait (pid_t pid) {

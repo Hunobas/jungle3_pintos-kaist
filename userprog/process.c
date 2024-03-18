@@ -82,8 +82,17 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *curr = thread_current();
+	memcpy(&curr->parent_if,if_,sizeof(struct intr_frame));
+
+	tid_t tid = thread_create (name,PRI_DEFAULT, __do_fork, curr);
+	if(tid == TID_ERROR)
+		return TID_ERROR;
+	
+	struct thread *child = get_child_process(tid);
+	sema_down(&child->load_sema);
+	
+	return tid;
 }
 
 #ifndef VM
@@ -128,11 +137,12 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &parent ->parent_if; // 이거 왜?
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	if_.R.rax = 0; // 자식의 리턴 값은 0이 되야
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -154,7 +164,7 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
+	sema_up(&current->load_sema);
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
@@ -203,7 +213,7 @@ process_exec (void *f_name) {
 	_if.R.rdi = count;
 	_if.R.rsi = (char*)_if.rsp + 8;
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); 
+	//hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); 
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -217,11 +227,11 @@ process_exec (void *f_name) {
 void argument_stack(char **parse, int count, void**rsp){
 	//argument 
 	for(int i = count-1; i > -1; i--){
-		printf(" 테스트용 : %s\n",parse[i]);
+		//printf(" 테스트용 : %s\n",parse[i]);
 		for(int j = strlen(parse[i]); j > -1; j--){
 			(*rsp)--;
 			**(char**)rsp = parse[i][j];
-			printf(" 테스트용22 : %c\n",parse[i][j]);
+			//printf(" 테스트용22 : %c\n",parse[i][j]);
 		}
 		parse[i] = *(char**)rsp;
 	}
@@ -286,7 +296,7 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	sema_up(&curr -> wait_sema);
 	sema_down(&curr -> free_sema);
-	
+
 	process_cleanup ();
 
 }

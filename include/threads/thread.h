@@ -120,6 +120,9 @@ struct thread {
 
 	struct semaphore wait_sema;         /* 자식 프로세스를 기다리기 위해 사용*/
 	struct semaphore free_sema;         /* parent가 wait함수에서 exit_status받기 전까지 child 프로세스 종료 연기*/
+	struct semaphore load_sema;         /* fork한 자식의 load기다리기용*/
+
+	struct intr_frame parent_if;        /* fork과정에서 유저 영역 값 저장용*/ 
 	
 
 #ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
