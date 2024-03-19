@@ -7,7 +7,9 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-#include "interrupt.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -78,17 +80,36 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_FILESIZE:
 		f->R.rax = filesize(f->R.rdi);
 		break;
+	case SYS_READ:
+		f->R.rax = read(f->R.rdi,f->R.rsi,f->R.rdx);
+		break;
+	case SYS_WRITE:
+		f->R.rax = write(f->R.rdi,(char*)f->R.rsi,f->R.rdx);
+		break;	
+	case SYS_SEEK:
+		seek(f->R.rdi,f->R.rsi);
+		break;
+	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
+		break;
+	case SYS_CLOSE:
+		close(f->R.rdi);
+		break;
 	
 	default:
-		thread_exit();
+		exit(-1);
 		break;
 	}
 }
 //유효성 체크를 위한 
 void check_address(const uint64_t *useradd){
 	struct thread *curr = thread_current();
-	if(useradd == NULL || !(is_user_vaddr(useradd)) || pml4_get_page(curr->pml4,useradd))
-	exit(-1);
+
+	if(useradd == NULL || !(is_user_vaddr(useradd)) || pml4_get_page(curr->pml4,useradd) == NULL){
+
+		exit(-1);
+		
+	}
 }
 
 void halt (void) {
@@ -160,10 +181,36 @@ int filesize (int fd) {
 }
 
 int read (int fd, void *buffer, unsigned length) {
+	check_address(buffer);
+	int ret;
+	if(fd == 0){
+		int i;
+		unsigned char *buf = buffer;
+		for(i=0;i<length;i++){
+			char c = input_getc();
+			*buf++ = c;
+			if(c == '\0')
+				break;
+		}
+		ret = i;
+	}else if(fd == 1){
+		return -1;
+	}else{
+		struct thread *curr = thread_current();
+		struct file *fileobj = find_file_by_fd(fd);
 
+		if(fileobj == NULL)
+			return -1;
+
+		lock_acquire(&file_lock);
+		ret = file_read(fileobj,buffer,length);
+		lock_release(&file_lock);
+	}
+	return ret;
 }
 
 int write (int fd, const void *buffer, unsigned length) {
+
 	check_address(buffer);
 	int ret;
 
@@ -181,21 +228,38 @@ int write (int fd, const void *buffer, unsigned length) {
 
 		lock_acquire(&file_lock);
 		ret = file_write(fileobj,buffer,length);
+		lock_release(&file_lock);
 		
 	}
 	return ret;
 }
 
 void seek (int fd, unsigned position) {
-
+	struct file *fileobj = find_file_by_fd(fd);
+	if(fileobj <= 2)
+		return;
+	file_seek(fileobj,position);
 }
 
 unsigned tell (int fd) {
-
+	struct file *fileobj = find_file_by_fd(fd);
+	if(fileobj<=2)
+		return;
+	return file_tell(fileobj);
 }
 
 void close (int fd) {
+	if(fd ==0 || fd == 1)
+		return;
+	else{
+		struct thread *curr = thread_current();
+		struct file *fileobj = find_file_by_fd(fd);
 
+		if(fileobj == NULL)
+			return;
+		remove_file_from_fdt(fd);
+		file_close(fileobj);
+	}
 }
 
 //file descriptor 서브 함수들 
@@ -222,7 +286,12 @@ int add_file_to_fdt(struct file *file){
 
 /* fdt에서 file 지우기 */
 void remove_file_from_fdt(int fd){
+	struct thread *curr = thread_current();
 
+	//파일 디스크럽터는 정수이고, 최대값 넘지 않아야
+	if(fd < 0 || fd > FDCOUNT_LIMIT)
+		return NULL;
+	curr -> fdt[fd] = NULL;
 }
 
 /* 만약 유효성 검사 통과하면 fd로 fdt안의 파일 꺼내기*/

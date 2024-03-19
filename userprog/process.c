@@ -107,21 +107,31 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-
+	if (is_kernel_vaddr(va)){
+		return true;
+	}
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
+	if(parent_page == NULL)
+		return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page(PAL_USER|PAL_ZERO);
+	if(newpage == NULL)
+		return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy(newpage,parent_page,PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -164,9 +174,10 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-	sema_up(&current->load_sema);
-	process_init ();
 
+	process_init ();
+	sema_up(&current->load_sema);
+	exit(TID_ERROR);
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
@@ -294,9 +305,17 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+
+	// 여기가 있으면 왜 모두 fail?
+	// for(int i = 0; i<FDCOUNT_LIMIT;i++){
+	// 	close(i);
+	// }
+	palloc_free_page(curr->fdt);
+
 	sema_up(&curr -> wait_sema);
 	sema_down(&curr -> free_sema);
 
+	file_close(curr->running);
 	process_cleanup ();
 
 }
@@ -423,6 +442,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+	t-> running = file;
+	file_deny_write(file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -501,9 +522,11 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	success = true;
 
+
+
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	//file_close (file);
 	return success;
 }
 
