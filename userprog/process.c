@@ -174,15 +174,15 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
-	process_init ();
 	sema_up(&current->load_sema);
-	exit(TID_ERROR);
+	process_init ();
+	
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	sema_up(&current->load_sema);
+	exit(TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
