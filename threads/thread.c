@@ -280,7 +280,6 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 	t->recent_cpu = curr->recent_cpu;
-	t->parent_tid = curr->tid;
 
 	t->fd_table = palloc_get_multiple (PAL_ZERO, FDT_PAGES);
 	if (t->fd_table == NULL) {
@@ -289,6 +288,7 @@ thread_create (const char *name, int priority,
 	t->fdidx = 2; // 0은 stdin, 1은 stdout에 이미 할당
 	t->fd_table[0] = 1; // stdin 자리: 1 배정
 	t->fd_table[1] = 2; // stdout 자리: 2 배정
+	list_push_back (&curr->child_list, &t->child_elem);
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -378,6 +378,19 @@ tid_t
 thread_tid (void) {
 	return thread_current ()->tid;
 }
+
+struct thread *
+get_child (int pid) {
+	struct thread *t = thread_current ();
+	struct list *child_list = &t->child_list;
+	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); e = list_next(e)){
+		struct thread *child_t = list_entry(e, struct thread, child_elem);
+		if (child_t->tid == pid)
+			return child_t;
+	}
+	return NULL;
+}
+
 
 /* Deschedules the current thread and destroys it.  Never
    returns to the caller. */
@@ -535,8 +548,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->init_priority = priority;
 	t->wait_on_lock = NULL;
-	t->nice = t->recent_cpu = t->parent_tid = t->exit_status = 0;
+	t->nice = t->recent_cpu = t->exit_status = 0;
+
+	sema_init (&t->wait_sema, 0);
+	sema_init (&t->fork_sema, 0);
+	sema_init (&t->exit_sema, 0);
+
 	list_init (&t->donations);
+	list_init (&t->child_list);
 	list_push_back (&all_list, &t->all_elem);
 }
 
@@ -676,11 +695,11 @@ thread_launch (struct thread *th) {
 static void
 do_schedule(int status) {
 	ASSERT (intr_get_level () == INTR_OFF);
-	ASSERT (thread_current()->status == THREAD_RUNNING);
+	ASSERT (thread_current ()->status == THREAD_RUNNING);
 	while (!list_empty (&destruction_req)) {
 		struct thread *victim =
 			list_entry (list_pop_front (&destruction_req), struct thread, elem);
-		palloc_free_page(victim);
+		palloc_free_page (victim);
 	}
 	thread_current ()->status = status;
 	schedule ();

@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/vaddr.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -29,8 +31,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-#define FDT_PAGES 3
-#define FDT_COUNT_LIMIT (FDT_PAGES*(1<<9)) // limit fdidx
+#define FDT_PAGES 1
+#define FDT_COUNT_LIMIT (FDT_PAGES * PGSIZE) // limit fdidx
 
 /* A kernel thread or user process.
  *
@@ -104,7 +106,7 @@ struct thread {
 	int init_priority;                  /* 원래 Priority 저장용*/
 	int64_t awake;                      /* 본인 잠들 시간 저장용 */
 
-	struct lock *wait_on_lock;           /* 기다리는 lock */
+	struct lock *wait_on_lock;           /* 획득 대기중인 lock */
 	struct list donations;              /* Priority 기부 해줄 리스트*/
 	/* Shared between thread.c and synch.c. */
 	struct list_elem all_elem;   
@@ -115,14 +117,21 @@ struct thread {
 	int nice;							/* niceness of thread for adjusting pri. */
 	int recent_cpu;					/* utilization of cpu by calculating bunch of fomula. */
 
+	// for project 2.
 	int exit_status;
 	struct file **fd_table;
 	int fdidx;
 
+	struct list child_list;
+	struct list_elem child_elem;
+
+	struct semaphore exit_sema;
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-	tid_t parent_tid;
 
 #endif
 #ifdef VM
@@ -131,7 +140,8 @@ struct thread {
 #endif
 
 	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching : 재개를 위해? */
+	struct intr_frame tf;               /* Information for switching */
+	struct intr_frame parent_if;        /* for fork system call. */ 
 	unsigned magic;                     /* Detects stack overflow. : thread_current()가 현재 스레드내 magic멤버가 THREAD_MAGIC인지 확인한다.*/
 };
 
@@ -166,6 +176,7 @@ void thread_unblock (struct thread *);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
+struct thread *get_child (int);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
