@@ -123,6 +123,9 @@ struct thread {
 	struct semaphore load_sema;         /* fork한 자식의 load기다리기용*/
 
 	struct intr_frame parent_if;        /* fork과정에서 유저 영역 값 저장용*/ 
+
+	struct file **fdt;                  /* file descriptor table: file구조체의 포인터로 구성 최대사이즈 64 */
+	int fd_index;                       /* fdt의 오픈 지점 인덱스 */
 	
 
 #ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
@@ -191,3 +194,7 @@ void calculate_load_avg (void);
 void recalculate_recent_cpu (void);
 void recalculate_priority (void);
 #endif /* threads/thread.h */
+
+//project 2
+#define FDT_PAGES 3 
+#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9)

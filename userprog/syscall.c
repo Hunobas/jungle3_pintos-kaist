@@ -7,10 +7,16 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "interrupt.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 pid_t fork(const char *thread_name, struct intr_frame *f);
+
+// File Descriptor
+static struct file *find_file_by_fd(int fd);
+int add_file_to_fdt(struct file *file);
+void remove_file_from_fdt(int fd);
 
 /* System call.
  *
@@ -36,6 +42,7 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&file_lock);
 }
 
 /* The main system call interface */
@@ -58,6 +65,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	case SYS_FORK:
 		f->R.rax = fork(f->R.rdi,f);
+		break;
+	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi,f->R.rsi);
+		break;
+	case SYS_REMOVE:
+		f->R.rax = remove(f->R.rdi);
+		break;
+	case SYS_OPEN:
+		f->R.rax = open(f->R.rdi);
+		break;
+	case SYS_FILESIZE:
+		f->R.rax = filesize(f->R.rdi);
 		break;
 	
 	default:
@@ -84,7 +103,7 @@ void exit (int status) {
 	thread_exit();
 }
 
-pid_t fork (const char *thread_name, struct intr_frame *f UNUSED) {
+pid_t fork(const char *thread_name, struct intr_frame *f){
 	return process_fork(thread_name,f);
 }
 
@@ -108,19 +127,36 @@ int wait (pid_t pid) {
 }
 
 bool create (const char *file, unsigned initial_size) {
-
+	check_address(file);
+	return filesys_create(file, initial_size);
 }
 
 bool remove (const char *file) {
-
+	check_address(file);
+	return filesys_remove(file);
 }
 
 int open (const char *file) {
+	check_address(file);
+	struct file *fileobj = filesys_open(file);
 
+	if(fileobj == NULL)
+		return -1;
+
+	// file을 fd table에 추가 성공하면 fd리턴 아니면 -1
+	int fd = add_file_to_fdt(fileobj);
+
+	// 실패 했다면(자리 없다면) close
+	if(fd == -1)
+		file_close(fileobj);
+
+	return fd;
 }
-
 int filesize (int fd) {
-
+	struct file *fileobj = find_file_by_fd(fd);
+	if(fileobj == NULL)
+		return -1;
+	return file_length(fileobj);
 }
 
 int read (int fd, void *buffer, unsigned length) {
@@ -128,7 +164,26 @@ int read (int fd, void *buffer, unsigned length) {
 }
 
 int write (int fd, const void *buffer, unsigned length) {
+	check_address(buffer);
+	int ret;
 
+	if(fd == 1){ // 표준 출력 : 버퍼의 내용 콘솔창으로 출력
+		putbuf(buffer,length);
+		ret = length;
+	}else if(fd == 0){// 표준 입력
+		return -1;
+	}else {
+		struct thread *curr = thread_current();
+		struct file *fileobj = find_file_by_fd(fd);
+
+		if(fileobj == NULL)
+			return -1;
+
+		lock_acquire(&file_lock);
+		ret = file_write(fileobj,buffer,length);
+		
+	}
+	return ret;
 }
 
 void seek (int fd, unsigned position) {
@@ -140,5 +195,44 @@ unsigned tell (int fd) {
 }
 
 void close (int fd) {
+
+}
+
+//file descriptor 서브 함수들 
+
+/* fdt안에 파일 넣기*/
+int add_file_to_fdt(struct file *file){
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+	
+	// file 자리 찾기 : FDCOUNT_LIMIT 범위 안에서 fdt NULL인곳 찾기
+	//                  최근 파일 이후부터 확인 
+	while(curr->fd_index < FDCOUNT_LIMIT && fdt[curr->fd_index])
+		curr-> fd_index++;
+	
+	if(curr->fd_index >= FDCOUNT_LIMIT)
+		return -1;
+	
+	//넣어주고
+	fdt[curr->fd_index] = file;
+
+	//fd_index 반환
+	return curr->fd_index;
+}
+
+/* fdt에서 file 지우기 */
+void remove_file_from_fdt(int fd){
+
+}
+
+/* 만약 유효성 검사 통과하면 fd로 fdt안의 파일 꺼내기*/
+static struct file *find_file_by_fd(int fd){
+	struct thread *curr = thread_current();
+	
+	//파일 디스크럽터는 정수이고, 최대값 넘지 않아야
+	if(fd < 0 || fd > FDCOUNT_LIMIT)
+		return NULL;
+	
+	return curr-> fdt[fd];
 
 }

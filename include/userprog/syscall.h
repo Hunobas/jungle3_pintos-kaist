@@ -4,7 +4,9 @@
 #include <stdbool.h>
 #include <debug.h>
 #include <stddef.h>
-// #include <interrupt.h>
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+
 
 /* Process identifier. */
 typedef int pid_t;
@@ -21,6 +23,7 @@ typedef int off_t;
 #define EXIT_SUCCESS 0          /* Successful execution. */
 #define EXIT_FAILURE 1          /* Unsuccessful execution. */
 
+struct lock file_lock;
 void syscall_init (void);
 
 void halt (void) NO_RETURN;

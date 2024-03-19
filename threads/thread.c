@@ -297,6 +297,11 @@ thread_create (const char *name, int priority,
 	thread_compare_priority();
 	list_push_back(&thread_current()->child_list, &t->child_elem);
 
+	t->fdt = palloc_get_page(PAL_ZERO);
+	if(t -> fdt  == NULL)
+		return TID_ERROR;
+	t->fd_index = 2; // 0은 stdin 1은 stdout
+
 	return tid;
 }
 
