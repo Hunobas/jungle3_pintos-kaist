@@ -138,10 +138,6 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 			}	
 		}
 	}
-	// 금기
-	// printf("load_avg now: %d\n", load_avg);
-	
-	
 	thread_awake(ticks);
 }
 

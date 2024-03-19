@@ -22,11 +22,15 @@ enum thread_status {
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+#define TID_KERNEL ((tid_t) 1)
 
 /* Thread priorities.: 우선순위 */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+#define FDT_PAGES 3
+#define FDT_COUNT_LIMIT (FDT_PAGES*(1<<9)) // limit fdidx
 
 /* A kernel thread or user process.
  *
@@ -111,9 +115,15 @@ struct thread {
 	int nice;							/* niceness of thread for adjusting pri. */
 	int recent_cpu;					/* utilization of cpu by calculating bunch of fomula. */
 
-#ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
+	int exit_status;
+	struct file **fd_table;
+	int fdidx;
+
+#ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	tid_t parent_tid;
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

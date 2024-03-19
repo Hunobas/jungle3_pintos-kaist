@@ -265,6 +265,7 @@ tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) { //이름,우선순위,인자
 		                                    //함수(쓰레드가 실행할 함수 => 쓰레드가 실행될때 함수 실행되고 함수종료되면 쓰레드 종료, main()처럼 작동한다.)
+	struct thread *curr = thread_current ();
 	struct thread *t;
 	tid_t tid;
 
@@ -278,6 +279,16 @@ thread_create (const char *name, int priority,
 	/* Initialize thread. */
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
+	t->recent_cpu = curr->recent_cpu;
+	t->parent_tid = curr->tid;
+
+	t->fd_table = palloc_get_multiple (PAL_ZERO, FDT_PAGES);
+	if (t->fd_table == NULL) {
+		return TID_ERROR;
+	}
+	t->fdidx = 2; // 0은 stdin, 1은 stdout에 이미 할당
+	t->fd_table[0] = 1; // stdin 자리: 1 배정
+	t->fd_table[1] = 2; // stdout 자리: 2 배정
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -294,7 +305,8 @@ thread_create (const char *name, int priority,
 	우선 순위 비교해준다음에 넣어주는 코드 만들어주기
 	*/ 
 	thread_unblock (t);
-	thread_compare_priority();
+	if (!thread_mlfqs)
+		thread_compare_priority();
 
 	return tid;
 }
@@ -380,7 +392,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-	list_remove(&thread_current()->all_elem);
+	list_remove (&thread_current ()->all_elem);
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -473,7 +485,6 @@ idle (void *idle_started_ UNUSED) {
 	struct semaphore *idle_started = idle_started_;
 
 	idle_thread = thread_current ();
-	// idle_thread->recent_cpu = 0;
 	sema_up (idle_started);
 
 	for (;;) {
@@ -524,9 +535,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->init_priority = priority;
 	t->wait_on_lock = NULL;
-	t->nice = 0;
-	t->recent_cpu = 0;
-	// t->recent_cpu = thread_current ()->recent_cpu;
+	t->nice = t->recent_cpu = t->parent_tid = t->exit_status = 0;
 	list_init (&t->donations);
 	list_push_back (&all_list, &t->all_elem);
 }
@@ -718,7 +727,7 @@ schedule (void) {
 /* Returns a tid to use for a new thread. */
 static tid_t
 allocate_tid (void) {
-	static tid_t next_tid = 1;
+	static tid_t next_tid = TID_KERNEL;
 	tid_t tid;
 
 	lock_acquire (&tid_lock);
@@ -771,7 +780,6 @@ void thread_compare_priority(void){
     thread_current ()->priority < 
     list_entry (list_front (&ready_list), struct thread, elem)->priority)
         thread_yield ();
-
 }
 
 bool cmp_donation_priority (const struct list_elem *a,const struct list_elem *b,void *aux){

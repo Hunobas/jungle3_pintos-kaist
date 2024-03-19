@@ -25,7 +25,7 @@
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
-static uintptr_t set_syscall_stack (uintptr_t*, char **, const char*);
+static uintptr_t set_syscall_stack (uintptr_t*, char **, const char*, struct intr_frame *if_);
 static void __do_fork (void *);
 
 /* General process initializer for initd and other process. */
@@ -185,7 +185,7 @@ process_exec (void *f_name) {
 	if (!success)
 		return -1;
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -206,20 +206,25 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (1);
+	// static tid_t waiting_tid_list[FDT_COUNT_LIMIT];
+
+	timer_sleep(100);
+	// while (1);
 	return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
+	char *file_name, *save_ptr;
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	process_cleanup ();
+	file_name = strtok_r (curr->name, " ", &save_ptr);
+
+	if (thread_tid () != TID_KERNEL) {
+		printf ("%s: exit(%d)\n", file_name, curr->exit_status);
+		process_cleanup ();
+	}
 }
 
 /* Free the current process's resources. */
@@ -312,12 +317,6 @@ struct ELF64_PHDR {
 /* Abbreviations */
 #define ELF ELF64_hdr
 #define Phdr ELF64_PHDR
-// 함수가 최대 가질 수 있는 인수 수
-#define ARG_MAX 128
-// 정렬 byte 수 (4byte에서 테스트되지 않음)
-#define ALIGNMENT 8
-// 8의 배수로 반올림 (ALIGNMENT가 8일때만 작동하는 코드)
-#define ALIGN(size) (((size) + (ALIGNMENT-1)) & (~0x7))
 
 static bool setup_stack (struct intr_frame *if_);
 static bool validate_segment (const struct Phdr *, struct file *);
@@ -427,7 +426,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
-	if ((if_->rsp = set_syscall_stack (&if_->rsp, &save_ptr, file_name)) == NULL)
+	if ((if_->rsp = set_syscall_stack (&if_->rsp, &save_ptr, file_name, if_)) == NULL)
 		goto done;
 	
 	success = true;
@@ -438,9 +437,15 @@ done:
 	return success;
 }
 
+// 함수가 최대 가질 수 있는 인수 수
+#define ARG_MAX 128
+// 정렬 byte 수
+#define ALIGNMENT 8
+// 8의 배수로 반올림 (ALIGNMENT가 8일때만 작동하는 코드)
+#define ALIGN(size) (((size) + (ALIGNMENT-1)) & (~0x7))
 
 /* set stack pointer. the stack ptr grows down. */
-static uintptr_t set_syscall_stack (uintptr_t* esp_, char **save_ptr_, const char* file_name) {
+static uintptr_t set_syscall_stack (uintptr_t* esp_, char **save_ptr_, const char* file_name, struct intr_frame *if_) {
 	uintptr_t esp_init, esp;
 	esp_init = esp = *esp_;
 	char *save_ptr = *save_ptr_;
@@ -483,19 +488,17 @@ static uintptr_t set_syscall_stack (uintptr_t* esp_, char **save_ptr_, const cha
 	memcpy(esp, argv, sizeof(char*) * (argc + 1));
 	// printf("포인터 스택 쌓은 후: 현재 esp는? \t\t%x\n", esp);
 	// printf("args1 포인터 내용 \t\t%p\n", *(int*)(esp));
-	// printf("args2 포인터 내용 \t\t%p\n", *(int*)(esp + 8));
-	// printf("args3 포인터 내용 \t\t%p\n", *(int*)(esp + 16));
-	// printf("word-align 내용 \t\t%p\n", *(int*)(esp + 24));
+	// printf("word-align 내용 \t\t%p\n", *(int*)(esp + 16));
 	// printf("args1 포인터 위치 \t\t%x\n", esp);
-	// printf("args2 포인터 위치 \t\t%x\n", esp + 8);
-	// printf("args3 포인터 위치 \t\t%x\n", esp + 16);
-	// printf("word-align 위치 \t\t%x\n", esp + 24);
-	// printf("argv[0][...] 내용 \t\t%s\n", esp + 29);
-
+	// printf("word-align 위치 \t\t%x\n", esp + 16);
+	// printf("argv[0][...] 내용 \t\t%s\n", esp + 21);
 	/* 리턴 주소 스택 */
 	esp -= sizeof(void*);
-	memset(esp, 0, sizeof(void*));
-	printf("리턴 주소 쌓은 후: 현재 esp는? \t\t\t%x\n", esp);
+	memset (esp, 0, sizeof(void*));
+	// printf("리턴 주소 쌓은 후: 현재 esp는? \t\t\t%x\n", esp);
+	if_->R.rdi = argc;
+	if_->R.rsi = esp + sizeof(void*);
+
 	return esp;
 }
 
