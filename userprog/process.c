@@ -223,17 +223,20 @@ process_exec (void *f_name) {
 
 	/* And then load the binary : 메모리로 */
 	success = load (file_name, &_if);
-	argument_stack(parse,count,&_if.rsp);
+	if (!success){
+		//printf("succ확인용");
+		return -1;
+	}
 
-	_if.R.rdi = count;
-	_if.R.rsi = (char*)_if.rsp + 8;
+	argument_stack(parse,count,&_if.rsp);
+	palloc_free_page (file_name);
 
 	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); 
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
-		return -1;
+		
+	_if.R.rdi = count;
+	_if.R.rsi = (char*)_if.rsp + 8;
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -446,6 +449,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
+		//printf ("load: %d: 처음 석세스\n", success);
 		goto done;
 	}
 	t-> running = file;
@@ -533,6 +537,7 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	//file_close (file);
+	//printf("gotodone확인용%d",success);
 	return success;
 }
 
