@@ -174,6 +174,16 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+	  for (int i = 0; i < FDCOUNT_LIMIT; i++)
+    {
+        struct file *file = parent->fdt[i];
+        if (file == NULL)
+            continue;
+        if (file > 2)
+            file = file_duplicate(file);
+        current->fdt[i] = file;
+    }
+	current->fd_index = parent->fd_index;
 	sema_up(&current->load_sema);
 	process_init ();
 	
@@ -206,16 +216,10 @@ process_exec (void *f_name) {
 	char *parse[64];
    	char *token, *save_ptr;
 	int count = 0;
-	// printf("들어가기전 file_name => %s",file_name);
    	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
    	token = strtok_r (NULL, " ", &save_ptr)){
 		parse[count++] = token;
-		// printf("token=> %s", token);
 	}
-	// for (int i = 0; i < count; i++) {
-    // printf("parse[%d] => %s\n", i, parse[i]);
-	// }
-	// printf("이거는 load의 file_name => %s\n", file_name);
 
 	/* And then load the binary : 메모리로 */
 	success = load (file_name, &_if);
@@ -224,7 +228,7 @@ process_exec (void *f_name) {
 	_if.R.rdi = count;
 	_if.R.rsi = (char*)_if.rsp + 8;
 
-	//hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); 
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); 
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -286,8 +290,10 @@ process_wait (tid_t child_tid UNUSED) {
 	// while (1)
 	// {
 	// }
-	if (child == NULL)
+	if (child == NULL){
+		// printf("여기있어유");
 		return -1;
+	}
 
 	sema_down(&child->wait_sema);
 	int exit_status = child -> exit_status;

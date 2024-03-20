@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "threads/palloc.h"
 
 
 void syscall_entry (void);
@@ -132,13 +133,13 @@ int exec (const char *file) {
 	check_address(file);
 
 	char *file_copy;
-    file_copy = palloc_get_page (0);
+    file_copy = palloc_get_page (PAL_ZERO);
 	
-	if(file_copy = NULL)
+	if(file_copy == NULL)
 		exit(-1);
-
-	strlcpy (file_copy, file, PGSIZE);
-
+	
+	strlcpy (file_copy, file, strlen(file)+1);
+	// printf("여기 넘어오나요?");
 	if(process_exec(file_copy) == -1)
 		exit(-1);
 }

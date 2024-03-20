@@ -277,6 +277,12 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+	t->fdt = palloc_get_multiple(PAL_ZERO,FDT_PAGES);
+	if(t -> fdt  == NULL)
+		return TID_ERROR;
+	t->fd_index = 2; // 0은 stdin 1은 stdout
+	t->fdt[0] = 1;
+	t->fdt[1] = 2;
 	tid = t->tid = allocate_tid ();
 
 	/* Call the kernel_thread if it scheduled.
@@ -296,11 +302,6 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 	thread_compare_priority();
 	list_push_back(&thread_current()->child_list, &t->child_elem);
-
-	t->fdt = palloc_get_page(PAL_ZERO);
-	if(t -> fdt  == NULL)
-		return TID_ERROR;
-	t->fd_index = 2; // 0은 stdin 1은 stdout
 
 	return tid;
 }
