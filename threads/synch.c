@@ -193,8 +193,8 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 	
 	struct thread *curr = thread_current();
-	if(thread_mlfqs){
-		sema_down(&lock->semaphore);
+	if (thread_mlfqs){
+		sema_down (&lock->semaphore);
 		lock->holder = curr;
 		return;
 	}
@@ -237,7 +237,7 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-	if(thread_mlfqs){
+	if (thread_mlfqs){
 		lock->holder = NULL;
 		sema_up(&lock->semaphore);
 		return;

@@ -131,17 +131,12 @@ page_fault (struct intr_frame *f) {
 	   data.  It is not necessarily the address of the instruction
 	   that caused the fault (that's f->rip). */
 
-	/* 고친 부분 */
 	fault_addr = (void *) rcr2();
-	if (get_user (fault_addr) == -1) {
-		thread_current ()->exit_status = -1;
-		process_exit ();
-	}
 
 	/* Turn interrupts back on (they were only off so that we could
 	   be assured of reading CR2 before it changed). */
 	intr_enable ();
-
+	exit (-1);
 
 	/* Determine cause. */
 	not_present = (f->error_code & PF_P) == 0;

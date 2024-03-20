@@ -21,5 +21,7 @@ typedef int off_t;
 #define EXIT_FAILURE 1          /* Unsuccessful execution. */
 
 void syscall_init (void);
+void exit (int status);
+void close (int fd);
 
 #endif /* userprog/syscall.h */

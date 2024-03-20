@@ -106,13 +106,23 @@ make_children (void) {
   int i = 0;
   int pid;
   char child_name[128];
-  for (; ; random_init (i), i++) {
+  // printf ("in make_children1\n");
+  for (/*printf ("in make_children4\n")*/; ; random_init (i), i++) {
     if (i > EXPECTED_DEPTH_TO_PASS/2) {
+      // printf ("in make_children3\n");
       snprintf (child_name, sizeof child_name, "%s_%d_%s", "child", i, "X");
+      
+      // printf ("in make_children2\n");
+      
       pid = fork(child_name);
+
       if (pid > 0 && wait (pid) != -1) {
+
         fail ("crashed child should return -1.");
-      } else if (pid == 0) {
+
+      }
+      else if (pid == 0) {
+
         consume_some_resources_and_die();
         fail ("Unreachable");
       }
@@ -144,6 +154,7 @@ main (int argc UNUSED, char *argv[] UNUSED) {
   msg ("begin");
 
   int first_run_depth = make_children ();
+  printf("after make_children\n");
   CHECK (first_run_depth >= EXPECTED_DEPTH_TO_PASS, "Spawned at least %d children.", EXPECTED_DEPTH_TO_PASS);
 
   for (int i = 0; i < EXPECTED_REPETITIONS; i++) {

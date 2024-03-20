@@ -281,7 +281,7 @@ thread_create (const char *name, int priority,
 	tid = t->tid = allocate_tid ();
 	t->recent_cpu = curr->recent_cpu;
 
-	t->fd_table = palloc_get_multiple (PAL_ZERO, FDT_PAGES);
+	t->fd_table = palloc_get_multiple (PAL_ZERO, FDT_PAGE);
 	if (t->fd_table == NULL) {
 		return TID_ERROR;
 	}
@@ -301,12 +301,8 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	/* Add to run queue. 
-	우선 순위 비교해준다음에 넣어주는 코드 만들어주기
-	*/ 
 	thread_unblock (t);
-	if (!thread_mlfqs)
-		thread_compare_priority();
+	thread_compare_priority();
 
 	return tid;
 }
@@ -553,6 +549,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	sema_init (&t->wait_sema, 0);
 	sema_init (&t->fork_sema, 0);
 	sema_init (&t->exit_sema, 0);
+	t->runn_file = NULL;
 
 	list_init (&t->donations);
 	list_init (&t->child_list);
@@ -756,7 +753,7 @@ allocate_tid (void) {
 	return tid;
 }
 
-void thread_sleep(int64_t ticks){
+void thread_sleep (int64_t ticks){
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
 
@@ -767,21 +764,21 @@ void thread_sleep(int64_t ticks){
 	if (curr != idle_thread){
 		curr->awake = ticks;
 		list_push_back (&sleep_list, &curr->elem);
-		thread_block();
+		thread_block ();
 	}
 	intr_set_level (old_level);
 }
 
-void thread_awake(int64_t ticks){
+void thread_awake (int64_t ticks){
 
-	struct list_elem *curr = list_begin(&sleep_list);
-	while(curr != list_tail(&sleep_list)) {
+	struct list_elem *curr = list_begin (&sleep_list);
+	while(curr != list_tail (&sleep_list)) {
 		struct thread *t = list_entry(curr,struct thread,elem);
 		if (t->awake <= ticks) {
-			curr=list_remove(curr);
-			thread_unblock(t);
+			curr = list_remove (curr);
+			thread_unblock (t);
 		} else {
-			curr = list_next(curr);
+			curr = list_next (curr);
 		}
 	}
 }

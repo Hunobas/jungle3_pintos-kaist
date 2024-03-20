@@ -82,6 +82,7 @@ filesys_open (const char *name) {
 	struct dir *dir = dir_open_root ();
 	struct inode *inode = NULL;
 
+	// printf("=======no such file has to : %s======= in filesys_open\n", name);
 	if (dir != NULL)
 		dir_lookup (dir, name, &inode);
 	dir_close (dir);

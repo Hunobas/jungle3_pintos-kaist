@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -43,13 +44,16 @@ tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
+	char *save_ptr;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
 	if (fn_copy == NULL)
 		return TID_ERROR;
+
 	strlcpy (fn_copy, file_name, PGSIZE);
+	strtok_r(file_name," ",&save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -57,6 +61,7 @@ process_create_initd (const char *file_name) {
 		palloc_free_page (fn_copy);
 	return tid;
 }
+
 
 /* A thread function that launches first user process. */
 static void
@@ -78,17 +83,17 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
 	struct thread *child_t, *parent;
-	tid_t pid;
+	tid_t tid;
 
 	parent = thread_current ();
 	memcpy (&parent->parent_if, if_, sizeof(struct intr_frame));
-	pid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
+	tid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
 
-	if ((child_t = get_child (pid)) != NULL) {
+	if ((child_t = get_child (tid)) != NULL) {
 		sema_down (&child_t->fork_sema);
 	}
 
-	return pid;
+	return tid;
 }
 
 #ifndef VM
@@ -104,9 +109,8 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 	if (is_kernel_vaddr (va)) {
-		// printf ("what is the child's tid %d\n", current->tid);
-		// printf ("what is the parent's tid %d\n", parent->tid);
-		// printf ("va is write as kern_vaddr %p\n", va);
+		printf("여기 안타니%s\n", current->name);
+		printf("여기 안타니%p\n", current);
 		return true;
 	}
 
@@ -152,12 +156,11 @@ __do_fork (void *aux) {
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 
-	// printf ("child's rsp pos after memcpy_must_same =========== {%p} =========\n", current->tf.rsp);
-
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
-	if (current->pml4 == NULL)
+	if (current->pml4 == NULL) {
 		goto error;
+	}
 
 	process_activate (current);
 #ifdef VM
@@ -178,8 +181,15 @@ __do_fork (void *aux) {
 	current->fd_table[0] = parent->fd_table[0];
 	current->fd_table[1] = parent->fd_table[1];
 
-	for (int i = 2; parent->fd_table[i] != NULL && i < FDT_COUNT_LIMIT; i++)
-		current->fd_table[i] = file_duplicate (parent->fd_table[i]);
+	for (int i = 0; i < FDT_COUNT_LIMIT; i++)
+    {
+        struct file *file = parent->fd_table[i];
+        if (file == NULL)
+            continue;
+        if (file > 2)
+            file = file_duplicate(file);
+        current->fd_table[i] = file;
+    }
 
 	current->fdidx = parent->fdidx;
 	sema_up (&current->fork_sema);
@@ -189,12 +199,8 @@ __do_fork (void *aux) {
 	/* Finally, switch to the newly created process. */
 	do_iret (&if_);
 error:
-	printf ("에러 들어오긴 함?\n");
-	current->exit_status = TID_ERROR;
 	sema_up (&current->fork_sema);
-	sema_up (&current->wait_sema);
-	thread_exit ();
-	//thread_exit ();
+	exit (TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
@@ -217,11 +223,13 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
-
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
+	if (!success) {
 		return -1;
+	}
+
+	palloc_free_page (file_name);
+
 
 	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack
 	/* Start switched process. */
@@ -244,14 +252,14 @@ process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	struct thread *t = thread_current();
 	struct thread *child_t = get_child (child_tid);
 	int exit_status;
 
-	if (child_t == NULL) {
+	if (child_t == NULL)
 		return -1;
-	}
 	
+	// printf("%s, %d: wait_sema down!\n", child_t->name, child_t->priority);
+	// printf("%s, %d: main prio!\n\n", thread_current ()->name, thread_current ()->priority);
 	sema_down (&child_t->wait_sema);
 	exit_status = child_t->exit_status;
 	list_remove (&child_t->child_elem);
@@ -263,16 +271,18 @@ process_wait (tid_t child_tid) {
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	char *file_name, *save_ptr;
-	struct thread *curr = thread_current ();
+	struct thread *t = thread_current ();
 
-	file_name = strtok_r (curr->name, " ", &save_ptr);
-
-	if (thread_tid () != TID_KERNEL) {
-		printf ("%s: exit(%d)\n", file_name, curr->exit_status);
-		sema_down (&curr->exit_sema);
-		process_cleanup ();
+	for (int i = 0; i < FDT_COUNT_LIMIT; i++) {
+		close (i);
 	}
+	palloc_free_multiple (t->fd_table, FDT_PAGE);
+	file_close (t->runn_file);
+
+	// printf("%s: exit_sema down!\n\n", t->name);
+	sema_up (&t->wait_sema);
+	sema_down (&t->exit_sema);
+	process_cleanup ();
 }
 
 /* Free the current process's resources. */
@@ -396,12 +406,15 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	// printf("=======no such file has to : %s======= in load\n", file_name);
 	/* Open executable file. */
 	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+	t->runn_file = file;
+	file_deny_write (file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -481,7 +494,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
 	return success;
 }
 
@@ -514,12 +526,10 @@ static uintptr_t set_syscall_stack (uintptr_t* esp_, char **save_ptr_, const cha
 			argv[argc++] = token;
 	}
 
-	// printf("처음 esp는? \t\t\t\t\t%x\n", esp);
 	for (int i = argc - 1; i >= 0; i--) {
 		esp -= strlen(argv[i]) + 1; 						// + 1 ==  + '\0': 종료 문자('\0') 고려
 		strlcpy(esp, argv[i], strlen(argv[i]) + 1);
 		argv[i] = esp;  									// 스택에 푸시한 주소를 argv에 저장
-		// printf("%d번째 인자 글자 수 쌓은 후: 현재 esp는? \t%x\n", i, esp);
 	}
 
 	/* 패딩 스택 */
@@ -527,23 +537,15 @@ static uintptr_t set_syscall_stack (uintptr_t* esp_, char **save_ptr_, const cha
 	int word_align = (ALIGN(word_diff) - word_diff);
 	esp -= word_align;
 	memset(esp, 0, word_align);
-	// printf("패딩 쌓은 후: 현재 esp는? \t\t\t%x\n", esp);
 
 	/* 포인터 스택
 	 * 스트링의 배열을 쌓으려면 strlcpy 대신 memcpy 쓸 것! ***
 	*/
 	esp -= sizeof(char*) * (argc + 1);						 // + 1 ==  + null: argv의 끝(NULL) 고려
 	memcpy(esp, argv, sizeof(char*) * (argc + 1));
-	// printf("포인터 스택 쌓은 후: 현재 esp는? \t\t%x\n", esp);
-	// printf("args1 포인터 내용 \t\t%p\n", *(int*)(esp));
-	// printf("word-align 내용 \t\t%p\n", *(int*)(esp + 16));
-	// printf("args1 포인터 위치 \t\t%x\n", esp);
-	// printf("word-align 위치 \t\t%x\n", esp + 16);
-	// printf("argv[0][...] 내용 \t\t%s\n", esp + 21);
 	/* 리턴 주소 스택 */
 	esp -= sizeof(void*);
 	memset (esp, 0, sizeof(void*));
-	// printf("리턴 주소 쌓은 후: 현재 esp는? \t\t\t%x\n", esp);
 	if_->R.rdi = argc;
 	if_->R.rsi = esp + sizeof(void*);
 

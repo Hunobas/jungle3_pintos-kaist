@@ -31,8 +31,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-#define FDT_PAGES 1
-#define FDT_COUNT_LIMIT (FDT_PAGES * PGSIZE) // limit fdidx
+#define FDT_PAGE 3       // limit fdidx
+#define FDT_COUNT_LIMIT (FDT_PAGE * PGSIZE)       // limit fdidx
 
 /* A kernel thread or user process.
  *
@@ -128,6 +128,8 @@ struct thread {
 	struct semaphore exit_sema;
 	struct semaphore fork_sema;
 	struct semaphore wait_sema;
+
+	struct file *runn_file;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
