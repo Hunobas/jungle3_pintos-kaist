@@ -316,12 +316,12 @@ process_exit (void) {
 	// for(int i = 0; i<FDCOUNT_LIMIT;i++){
 	// 	close(i);
 	// }
-	palloc_free_page(curr->fdt);
+	palloc_free_multiple(curr->fdt,FDT_PAGES);
+	file_close(curr->running);
 
 	sema_up(&curr -> wait_sema);
 	sema_down(&curr -> free_sema);
 
-	file_close(curr->running);
 	process_cleanup ();
 
 }
