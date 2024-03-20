@@ -533,7 +533,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->wait_on_lock = NULL;
 	t->nice = 0;
 	t->recent_cpu = 0;
-	t->running = NULL;
+	t->runn_file = NULL;
 	// t->recent_cpu = thread_current ()->recent_cpu;
 	list_init (&t->donations);
 	list_push_back (&all_list, &t->all_elem);

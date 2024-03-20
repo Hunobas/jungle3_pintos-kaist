@@ -316,11 +316,11 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
 	// 여기가 있으면 왜 모두 fail?
-	// for(int i = 0; i<FDCOUNT_LIMIT;i++){
-	// 	close(i);
-	// }
+	for(int i = 0; i<FDCOUNT_LIMIT;i++){
+		close(i);
+	}
 	palloc_free_multiple(curr->fdt,FDT_PAGES);
-	file_close(curr->running);
+	file_close(curr->runn_file);
 
 	sema_up(&curr -> wait_sema);
 	sema_down(&curr -> free_sema);
@@ -452,7 +452,7 @@ load (const char *file_name, struct intr_frame *if_) {
 		//printf ("load: %d: 처음 석세스\n", success);
 		goto done;
 	}
-	t-> running = file;
+	t-> runn_file = file;
 	file_deny_write(file);
 
 	/* Read and verify executable header. */

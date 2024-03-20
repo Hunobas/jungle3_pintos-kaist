@@ -127,7 +127,7 @@ struct thread {
 	struct file **fdt;                  /* file descriptor table: file구조체의 포인터로 구성 최대사이즈 64 */
 	int fd_index;                       /* fdt의 오픈 지점 인덱스 */
 
-	struct file *running;               /* 현재 실행 중인 프로세스가 실행 중인 파일*/
+	struct file *runn_file;               /* 현재 실행 중인 프로세스가 실행 중인 파일*/
 	
 
 #ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
