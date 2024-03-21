@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -109,7 +110,25 @@ struct thread {
 
 	// for advanced scheduler.
 	int nice;							/* niceness of thread for adjusting pri. */
-	int recent_cpu;					/* utilization of cpu by calculating bunch of fomula. */
+	int recent_cpu;					    /* utilization of cpu by calculating bunch of fomula. */
+
+	//project 2
+	int exit_status;                    /*부모 프로세스가 확인할 exit_status*/
+
+	struct list child_list;             /* 자식 리스트 */
+	struct list_elem child_elem;
+
+	struct semaphore wait_sema;         /* 자식 프로세스를 기다리기 위해 사용*/
+	struct semaphore free_sema;         /* parent가 wait함수에서 exit_status받기 전까지 child 프로세스 종료 연기*/
+	struct semaphore load_sema;         /* fork한 자식의 load기다리기용*/
+
+	struct intr_frame parent_if;        /* fork과정에서 유저 영역 값 저장용*/ 
+
+	struct file **fdt;                  /* file descriptor table: file구조체의 포인터로 구성 최대사이즈 64 */
+	int fd_index;                       /* fdt의 오픈 지점 인덱스 */
+
+	struct file *runn_file;               /* 현재 실행 중인 프로세스가 실행 중인 파일*/
+	
 
 #ifdef USERPROG //만약 USERPROG매크로가 정의되있다면
 	/* Owned by userprog/process.c. */
@@ -177,3 +196,7 @@ void calculate_load_avg (void);
 void recalculate_recent_cpu (void);
 void recalculate_priority (void);
 #endif /* threads/thread.h */
+
+//project 2
+#define FDT_PAGES 3 
+#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9)
